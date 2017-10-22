@@ -9,6 +9,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "express": "^4.16.2",
+    "picasa": "^1.0.6",
     "telegraf": "^3.8.2",
     "telegraph-node": "^1.0.4"
   },

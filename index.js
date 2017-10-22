@@ -3,6 +3,9 @@ const Telegraf = require('telegraf'),
  	    https = require('https'),
  	    telegraph = require('telegraph-node'),
  	    ph = new telegraph();
+var Picasa = require('picasa')
+var picasa = new Picasa()
+var { URL } = require('url')
 var count,staticCount = 0
 var waiting = false
 var arr = []
@@ -24,6 +27,34 @@ var parseFile = function(file,ctx){
 	})
 }
 
+var getPhoto = function(url,ctx,count){
+	var imagedata = ''
+	var request = https.get(url, function(response) {
+		console.log(url)
+		response.setEncoding('binary')
+
+
+		response.on('data',(chunk) => {
+			imagedata += chunk
+		})
+		response.on('end',() => {
+			const photoData = {
+			      	title: `${count}`,
+			      	summary: '',
+			      	conentType: 'image/jpg',
+			      	binary: imagedata
+			}
+
+		    picasa.postPhoto(config.accessToken, config.albumId, photoData, (error, photo) => {
+				  console.log(error, photo)
+				  return photo;
+			})
+		})
+		response.on('error',(err)=>{
+			console.log('Error during https request')
+		})
+  });
+}
 
 var downloadDoc = function(url, dest, ctx) {
   var file = fs.createWriteStream(dest);
@@ -82,13 +113,11 @@ bot.on('photo',(ctx) =>{
 	if(count > 0){
 		return bot.telegram.getFileLink(ctx.message.photo[2])
 		.then((link)=>{
-			links.push(link)
-			//console.log('after push',links)
+			links.push(getPhoto(link,ctx,count))
 			count--
 			if(count == 0){
 			ctx.reply("That's all. Merging")
 			merger(ctx)
-			//ctx.reply(`${wut.url}`)
 		}else{	
 		ctx.reply(`Need only ${count} more picture(s)`)
 		}
