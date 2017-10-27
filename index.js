@@ -41,7 +41,7 @@ var getPhoto = function(url,ctx,count){
 			const photoData = {
 			      	title: `${count}`,
 			      	summary: '',
-			      	conentType: 'image/jpg',
+			      	conentType: 'image/jpeg',
 			      	binary: imagedata
 			}
 
