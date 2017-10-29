@@ -2,7 +2,11 @@ const Telegraf = require('telegraf'),
 		fs = require('fs'),
  	    https = require('https'),
  	    telegraph = require('telegraph-node'),
- 	    ph = new telegraph();
+ 	    ph = new telegraph(),
+ 	    request = require('request'),
+ 	    express = require('express'),
+ 	    bodyParser = require('body-parser'),
+ 	    router = express.Router();
 var Picasa = require('picasa')
 var picasa = new Picasa()
 var { URL } = require('url')
@@ -14,6 +18,17 @@ var links = []
 var re = /<\d+>/;
 var subj
 var config = require('./config.js')
+var app = new express()
+
+var logger = function(req, res, next) {
+    console.log(`${req.body}`);
+    next(); // Passing the request to the next handler in the stack.
+}
+
+const bot = new Telegraf(config.token)
+bot.telegram.setWebhook(`${config.url}/bot${config.token}`)
+bot.use(Telegraf.memorySession())
+app.use(bot.webhookCallback(`/bot${config.token}`))
 
 var parseFile = function(file,ctx){
 	fs.readFile(file,'utf8', (err,data)=>{
@@ -27,33 +42,72 @@ var parseFile = function(file,ctx){
 	})
 }
 
+// var getPhoto = function(url,ctx,count){
+// 	var imagedata = ''
+// 	var requestSettings = {
+// 		method: 'GET',
+// 		url: url,
+// 		encoding: null
+// 	}
+// 	request(requestSettings, (error,response,body)=>{
+// 		const photoData = {
+// 			      	title: `${Math.floor(Date.now() / 1000)}`,
+// 			      	summary: '',
+// 			      	contentType: 'image/jpg',
+// 			      	binary: body
+// 			}
+
+// 		   picasa.postPhoto(config.accessToken, config.albumId, photoData, (error, photo) => {
+// 				if(error){
+// 				 	const conf = {
+// 				 		clientId: config.clientId,
+// 				 		redirectURI: config.redirectURI,
+// 				 		clientSecret: config.clientSecret
+// 				 	}
+// 				 	picasa.renewAccessToken(conf, config.refreshToken, (error, accessToken) => {
+// 					  config.accessToken = `${accessToken}`
+// 					})
+// 				 }else{
+// 				  console.log(error, photo)
+// 				  return photo.content.src;
+// 				}
+// 			})
+// 	})
+// }
+
 var getPhoto = function(url,ctx,count){
-	var imagedata = ''
-	var request = https.get(url, function(response) {
-		console.log(url)
-		response.setEncoding('binary')
-
-
-		response.on('data',(chunk) => {
-			imagedata += chunk
-		})
-		response.on('end',() => {
+	return new Promise((resolve,reject)=>{
+		var requestSettings = {
+			method: 'GET',
+			url: url,
+			encoding: null
+		}
+		request(requestSettings, (error,response,body)=>{
 			const photoData = {
-			      	title: `${count}`,
-			      	summary: '',
-			      	conentType: 'image/jpeg',
-			      	binary: imagedata
-			}
-
-		    picasa.postPhoto(config.accessToken, config.albumId, photoData, (error, photo) => {
-				  console.log(error, photo)
-				  return photo;
-			})
+				      	title: `${Math.floor(Date.now() / 1000)}`,
+				      	summary: '',
+				      	contentType: 'image/jpg',
+				      	binary: body
+				}
+				if(error){
+					reject(error)
+				}else{
+					picasa.postPhoto(config.accessToken, config.albumId, photoData, (error, photo) => {
+				   	if(error){
+					   	const conf = {
+						   	clientId: config.clientId,
+						   	redirectURI: config.redirectURI,
+						   	clientSecret: config.clientSecret
+					   	}
+					   	picasa.renewAccessToken(conf, config.refreshToken, (error, accessToken) => {
+					   	  config.accessToken = `${accessToken}`
+					   	})
+				   	}else{
+					   	resolve(photo.content.src)
+				   	}
+				   	})}
 		})
-		response.on('error',(err)=>{
-			console.log('Error during https request')
-		})
-  });
+	})
 }
 
 var downloadDoc = function(url, dest, ctx) {
@@ -87,12 +141,8 @@ const fileDownloadMiddleware = (ctx,next) => {
 			return next()
 		})
 }
-
-const bot = new Telegraf(config.token)
-bot.use(Telegraf.memorySession())
 bot.on('document',fileDownloadMiddleware, (ctx,next) => {
 	console.log('Doc url:',ctx.state.fileLink)
-	//return ctx.reply(`Message count ${ctx.session.counter}`)
 })
 bot.on('text',(ctx)=>{
 	if(waiting){
@@ -113,17 +163,37 @@ bot.on('photo',(ctx) =>{
 	if(count > 0){
 		return bot.telegram.getFileLink(ctx.message.photo[2])
 		.then((link)=>{
-			links.push(getPhoto(link,ctx,count))
-			count--
-			if(count == 0){
-			ctx.reply("That's all. Merging")
-			merger(ctx)
-		}else{	
-		ctx.reply(`Need only ${count} more picture(s)`)
-		}
+			getPhoto(link,ctx,count)
+			.then((link)=>{
+				links.push(`${link}`)
+				count--
+				if(count == 0){
+				ctx.reply("That's all. Merging")
+				merger(ctx)
+				}else{	
+				ctx.reply(`Need only ${count} more picture(s)`)
+				}
+			})
 		})
 	}else{
 		ctx.reply("Wait, I didn't recieve any documents")
 	}
 })
-bot.startPolling()
+
+// app.configure(function(){
+//     app.use(logger); // Here you add your logger to the stack.
+//     app.use(app.router); // The Express routes handler.
+// });
+
+router.use(bodyParser.json());
+router.use(bodyParser.urlencoded({extended: true}));
+
+app.get('/', function(req, res){
+    console.log(`${req.body}`);
+});
+
+app.listen(process.env.PORT);
+
+
+
+//bot.startPolling()
